@@ -15,9 +15,15 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.MyApplication">
+        <!-- ===================================================================== -->
+        <!-- [NOTE: ADMOB APP ID REPLACEMENT]                                      -->
+        <!-- নিচে বর্তমানে Google AdMob-এর Official TEST App ID দেওয়া আছে।          -->
+        <!-- অ্যাপ পাবলিশ করার সময় নিচের android:value পরিবর্তন করে আপনার Real App ID দিন: -->
+        <!-- Real App ID: ca-app-pub-5937358493599236~4244999709                   -->
+        <!-- ===================================================================== -->
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="ca-app-pub-5937358493599236~4244999709" />
+            android:value="ca-app-pub-3940256099942544~3347511713" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

@@ -12,9 +12,22 @@ import com.google.android.gms.ads.rewarded.RewardedAd
 import com.google.android.gms.ads.rewarded.RewardedAdLoadCallback
 
 object AdMobManager {
-    // Official Google AdMob Ad Unit IDs for Jaz Cash Arrow Puzzle
-    const val BANNER_AD_UNIT_ID = "ca-app-pub-5937358493599236/5526291785"
-    const val REWARDED_AD_UNIT_ID = "ca-app-pub-5937358493599236/5979829767"
+    // =========================================================================================
+    // [NOTE: ADMOB AD UNIT ID REPLACEMENT / রিয়েল অ্যাড আইডি বসানোর জায়গা]
+    // বর্তমানে নিচে Google AdMob-এর Official TEST Ad Unit ID দেওয়া আছে।
+    // অ্যাপ পাবলিশ করার সময় নিচের TEST ID-এর বদলে আপনার Real Ad Unit ID বসিয়ে দিন:
+    //
+    // আপনার Real Banner Ad Unit ID   : "ca-app-pub-5937358493599236/5526291785"
+    // আপনার Real Rewarded Ad Unit ID : "ca-app-pub-5937358493599236/5979829767"
+    // (এবং AndroidManifest.xml ফাইলে Real App ID: "ca-app-pub-5937358493599236~4244999709")
+    // =========================================================================================
+
+    // TODO: Replace this Test Banner ID with Real Banner ID: "ca-app-pub-5937358493599236/5526291785"
+    const val BANNER_AD_UNIT_ID = "ca-app-pub-3940256099942544/6300978111"
+
+    // TODO: Replace this Test Rewarded ID with Real Rewarded ID: "ca-app-pub-5937358493599236/5979829767"
+    const val REWARDED_AD_UNIT_ID = "ca-app-pub-3940256099942544/5224354917"
+
     const val TEST_BANNER_AD_UNIT_ID = BANNER_AD_UNIT_ID
     const val TEST_REWARDED_AD_UNIT_ID = REWARDED_AD_UNIT_ID
 
