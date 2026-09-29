@@ -32,6 +32,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -47,19 +48,24 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.example.ads.AdMobManager
+import com.google.android.gms.ads.AdListener
 import com.google.android.gms.ads.AdRequest
 import com.google.android.gms.ads.AdSize
 import com.google.android.gms.ads.AdView
+import com.google.android.gms.ads.LoadAdError
 import kotlinx.coroutines.delay
 
 /**
- * Google AdMob Test Banner Ad Bar (320x50) using official Test Ad Unit ID
+ * Google AdMob Banner Ad Bar (320x50) using official Google Test Ad Unit ID
  * ca-app-pub-3940256099942544/6300978111.
+ * Displays the real Google AdMob Banner AdView without showing raw Ad Unit IDs on screen.
  */
 @Composable
 fun AdMobBannerBar(
     modifier: Modifier = Modifier
 ) {
+    var isBannerLoaded by remember { mutableStateOf(false) }
+
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -69,20 +75,19 @@ fun AdMobBannerBar(
             .testTag("admob_banner_bar"),
         contentAlignment = Alignment.Center
     ) {
-        // Visual AdMob Test Banner layer underneath (always visible immediately, and covered when SDK AdView renders)
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+        if (!isBannerLoaded) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(4.dp))
                         .background(Color(0xFFFACC15))
-                        .padding(horizontal = 5.dp, vertical = 2.dp)
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
                 ) {
                     Text(
                         text = "Ad",
@@ -92,36 +97,16 @@ fun AdMobBannerBar(
                     )
                 }
                 Spacer(modifier = Modifier.width(8.dp))
-                Column {
-                    Text(
-                        text = "Jaz Cash Arrow Puzzle • Sponsored",
-                        color = Color.White,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "AdMob Banner • ${AdMobManager.BANNER_AD_UNIT_ID}",
-                        color = Color(0xFF94A3B8),
-                        fontSize = 10.sp
-                    )
-                }
-            }
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(Color(0xFF2563EB))
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
-            ) {
                 Text(
-                    text = "AD",
-                    color = Color.White,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Black
+                    text = "Google AdMob • Test Ad",
+                    color = Color(0xFFCBD5E1),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold
                 )
             }
         }
 
-        // Google Mobile Ads AdView with real Banner Ad Unit ID
+        // Official Google Mobile Ads SDK Banner AdView
         AndroidView(
             modifier = Modifier
                 .fillMaxWidth()
@@ -130,6 +115,15 @@ fun AdMobBannerBar(
                 AdView(context).apply {
                     setAdSize(AdSize.BANNER)
                     adUnitId = AdMobManager.BANNER_AD_UNIT_ID
+                    adListener = object : AdListener() {
+                        override fun onAdLoaded() {
+                            isBannerLoaded = true
+                        }
+
+                        override fun onAdFailedToLoad(error: LoadAdError) {
+                            isBannerLoaded = false
+                        }
+                    }
                     try {
                         loadAd(AdRequest.Builder().build())
                     } catch (_: Throwable) {
@@ -141,9 +135,8 @@ fun AdMobBannerBar(
 }
 
 /**
- * Full-Screen Google AdMob Test Rewarded Video Ad Overlay
- * Used when the user triggers a Reward Video / Watch Video Ad and ensures 100% reliable
- * test video playback and reward delivery.
+ * Offline / Emulator Fallback Test Video Ad Overlay (only shown if device has no internet
+ * or Google Play Services is unavailable). Never displays raw Ad Unit IDs.
  */
 @Composable
 fun AdMobRewardedVideoDialog(
@@ -180,7 +173,7 @@ fun AdMobRewardedVideoDialog(
             .padding(20.dp)
             .testTag("admob_rewarded_video_dialog")
     ) {
-        // Top Bar: "Ad • Test Ad" + Countdown + Close Button
+        // Top Bar: "Test Ad" + Countdown + Close Button
         Row(
             modifier = Modifier
                 .align(Alignment.TopCenter)
@@ -204,7 +197,7 @@ fun AdMobRewardedVideoDialog(
                         .padding(horizontal = 6.dp, vertical = 2.dp)
                 ) {
                     Text(
-                        text = "Ad",
+                        text = "Test Ad",
                         color = Color.Black,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Black
@@ -249,7 +242,7 @@ fun AdMobRewardedVideoDialog(
             }
         }
 
-        // Center AdMob Test Video Content
+        // Center Test Video Content
         Column(
             modifier = Modifier
                 .align(Alignment.Center)
@@ -271,21 +264,12 @@ fun AdMobRewardedVideoDialog(
                     .padding(horizontal = 12.dp, vertical = 4.dp)
             ) {
                 Text(
-                    text = "Google AdMob • Rewarded Video Ad",
+                    text = "Google AdMob • Test Video Ad",
                     color = Color(0xFFFDE047),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.ExtraBold
                 )
             }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                text = "Unit ID: ${AdMobManager.REWARDED_AD_UNIT_ID}",
-                color = Color(0xFF93C5FD),
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Medium
-            )
 
             Spacer(modifier = Modifier.height(22.dp))
 
@@ -372,7 +356,7 @@ fun AdMobRewardedVideoDialog(
                 }
             } else {
                 Text(
-                    text = "Watching test video ad... (${secondsLeft}s remaining)",
+                    text = "Playing Test Video Ad... (${secondsLeft}s remaining)",
                     color = Color(0xFFCBD5E1),
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold

@@ -3,6 +3,8 @@ package com.example.ads
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import android.os.Handler
+import android.os.Looper
 import com.google.android.gms.ads.AdError
 import com.google.android.gms.ads.AdRequest
 import com.google.android.gms.ads.FullScreenContentCallback
@@ -34,51 +36,64 @@ object AdMobManager {
     private var rewardedAd: RewardedAd? = null
     private var isLoadingRewarded = false
     private var isInitialized = false
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     fun initialize(context: Context) {
+        val appCtx = context.applicationContext
         if (!isInitialized) {
             isInitialized = true
             try {
-                MobileAds.initialize(context.applicationContext) {
-                    loadRewardedAd(context.applicationContext)
+                MobileAds.initialize(appCtx) {
+                    mainHandler.post {
+                        loadRewardedAd(appCtx)
+                    }
                 }
             } catch (_: Throwable) {
             }
         } else if (rewardedAd == null && !isLoadingRewarded) {
-            loadRewardedAd(context.applicationContext)
+            loadRewardedAd(appCtx)
         }
     }
 
-    fun loadRewardedAd(context: Context) {
-        if (isLoadingRewarded || rewardedAd != null) return
+    fun loadRewardedAd(context: Context, onLoadedCallback: ((RewardedAd?) -> Unit)? = null) {
+        val appCtx = context.applicationContext
+        val existing = rewardedAd
+        if (existing != null) {
+            onLoadedCallback?.invoke(existing)
+            return
+        }
+        if (isLoadingRewarded && onLoadedCallback == null) return
         isLoadingRewarded = true
         try {
             val adRequest = AdRequest.Builder().build()
             RewardedAd.load(
-                context.applicationContext,
-                TEST_REWARDED_AD_UNIT_ID,
+                appCtx,
+                REWARDED_AD_UNIT_ID,
                 adRequest,
                 object : RewardedAdLoadCallback() {
                     override fun onAdLoaded(ad: RewardedAd) {
                         rewardedAd = ad
                         isLoadingRewarded = false
+                        onLoadedCallback?.invoke(ad)
                     }
 
                     override fun onAdFailedToLoad(loadAdError: LoadAdError) {
                         rewardedAd = null
                         isLoadingRewarded = false
+                        onLoadedCallback?.invoke(null)
                     }
                 }
             )
         } catch (_: Throwable) {
             isLoadingRewarded = false
+            onLoadedCallback?.invoke(null)
         }
     }
 
     /**
-     * Attempts to show a loaded Google AdMob Test RewardedAd.
-     * If the native AdMob ad is still loading or unavailable in the current environment,
-     * invokes [onFallbackOverlayNeeded] so the in-app AdMob Test Video Ad overlay is shown.
+     * Shows a real Google AdMob RewardedAd (using Official Test ID by default).
+     * If the ad isn't preloaded yet, loads it on-demand and displays it as soon as it arrives.
+     * Only falls back to [onFallbackOverlayNeeded] if AdMob fails to load (e.g. no internet).
      */
     fun showRewardedAd(
         context: Context,
@@ -87,31 +102,63 @@ object AdMobManager {
         onFallbackOverlayNeeded: () -> Unit
     ) {
         val activity = context.findActivity()
-        val ad = rewardedAd
-        if (ad != null && activity != null) {
-            var earned = false
-            ad.fullScreenContentCallback = object : FullScreenContentCallback() {
-                override fun onAdDismissedFullScreenContent() {
-                    rewardedAd = null
-                    loadRewardedAd(context.applicationContext)
-                    if (earned) {
-                        onRewardEarned()
-                    }
-                    onAdClosed()
-                }
+        if (activity == null) {
+            onFallbackOverlayNeeded()
+            return
+        }
 
-                override fun onAdFailedToShowFullScreenContent(adError: AdError) {
-                    rewardedAd = null
-                    loadRewardedAd(context.applicationContext)
+        val readyAd = rewardedAd
+        if (readyAd != null) {
+            presentRewardedAd(
+                activity = activity,
+                ad = readyAd,
+                onRewardEarned = onRewardEarned,
+                onAdClosed = onAdClosed,
+                onFallbackOverlayNeeded = onFallbackOverlayNeeded
+            )
+        } else {
+            // Load on-demand and show the real AdMob Test Video Ad immediately when loaded
+            loadRewardedAd(activity) { loadedAd ->
+                if (loadedAd != null && !activity.isFinishing && !activity.isDestroyed) {
+                    presentRewardedAd(
+                        activity = activity,
+                        ad = loadedAd,
+                        onRewardEarned = onRewardEarned,
+                        onAdClosed = onAdClosed,
+                        onFallbackOverlayNeeded = onFallbackOverlayNeeded
+                    )
+                } else {
                     onFallbackOverlayNeeded()
                 }
             }
-            ad.show(activity) {
-                earned = true
+        }
+    }
+
+    private fun presentRewardedAd(
+        activity: Activity,
+        ad: RewardedAd,
+        onRewardEarned: () -> Unit,
+        onAdClosed: () -> Unit,
+        onFallbackOverlayNeeded: () -> Unit
+    ) {
+        var earned = false
+        rewardedAd = null
+        ad.fullScreenContentCallback = object : FullScreenContentCallback() {
+            override fun onAdDismissedFullScreenContent() {
+                loadRewardedAd(activity.applicationContext)
+                if (earned) {
+                    onRewardEarned()
+                }
+                onAdClosed()
             }
-        } else {
-            loadRewardedAd(context.applicationContext)
-            onFallbackOverlayNeeded()
+
+            override fun onAdFailedToShowFullScreenContent(adError: AdError) {
+                loadRewardedAd(activity.applicationContext)
+                onFallbackOverlayNeeded()
+            }
+        }
+        ad.show(activity) {
+            earned = true
         }
     }
 }
