@@ -1,0 +1,6 @@
+{
+  "name": "Jaz Cash Arrow Puzzle",
+  "description": "Tap away arrow maze puzzle game with daily tasks, career rewards, and 100+ challenging levels.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

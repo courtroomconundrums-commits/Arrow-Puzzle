@@ -1,0 +1,14 @@
+<resources>
+    <string name="app_name">Jaz Cash Arrow Puzzle</string>
+    <string name="withdraw_button">উত্তোলন</string>
+    <string name="task_center_title">টাস্ক সেন্টার</string>
+    <string name="daily_tasks_tab">দৈনিক টাস্ক</string>
+    <string name="career_tasks_tab">ক্যারিয়ার টাস্ক</string>
+    <string name="claim_button">দাবি করুন</string>
+    <string name="incomplete_button">অসম্পূর্ণ</string>
+    <string name="claimed_button">দাবি করা হয়েছে</string>
+    <string name="hint_button_desc">ইঙ্গিত ব্যবহার করুন</string>
+    <string name="grid_button_desc">গ্রিড গাইড টগল করুন</string>
+    <string name="settings_button_desc">সেটিংস খুলুন</string>
+    <string name="tasks_button_desc">টাস্ক সেন্টার খুলুন</string>
+</resources>
