@@ -48,6 +48,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.WithdrawalRecordEntity
 import com.example.domain.CountryRegion
 import com.example.domain.LocalizedStrings
 import com.example.domain.MobileBankingOption
@@ -56,34 +57,50 @@ import com.example.domain.MobileBankingOption
 fun WithdrawScreen(
     balance: Double,
     selectedTierBdt: Double,
+    tiersBdt: List<Double> = listOf(5000.0, 10000.0, 20000.0, 30000.0),
+    minWithdrawBdt: Double = 5000.0,
     countryRegion: CountryRegion,
     savedPaymentMethodId: String,
     savedAccountNumber: String,
     savedAccountName: String,
+    isUserLoggedIn: Boolean,
+    userId: String,
+    userFullName: String,
+    userEmailOrPhone: String,
     strings: LocalizedStrings,
     currencySymbol: String,
     tickerText: String,
+    showUserAuthModal: Boolean,
     showAccountModal: Boolean,
     showConfirmModal: Boolean,
+    withdrawals: List<WithdrawalRecordEntity> = emptyList(),
     onSelectTierBdt: (Double) -> Unit,
     onSelectCountryRegion: (CountryRegion) -> Unit,
     onClickWithdrawButton: () -> Unit,
+    onOpenUserAuthModal: () -> Unit,
+    onRegisterUser: (String, String, String) -> Unit,
+    onLoginUser: (String, String) -> Unit,
+    onUpdateUserProfile: (String, String, String, String) -> Unit = { _, _, _, _ -> },
+    onResetPassword: (String, String, String) -> Unit = { _, _, _ -> },
+    onLogoutUser: () -> Unit,
+    onRefreshWithdrawalStatuses: () -> Unit,
     onSaveAccountDetails: (MobileBankingOption, String, String) -> Unit,
     onConfirmWithdraw: () -> Unit,
     onCloseModals: () -> Unit,
     onBack: () -> Unit
 ) {
     BackHandler {
-        if (showAccountModal || showConfirmModal) {
+        if (showUserAuthModal || showAccountModal || showConfirmModal) {
             onCloseModals()
         } else {
             onBack()
         }
     }
 
-    val tiersBdt = listOf(5000.0, 10000.0, 20000.0, 30000.0)
-    val tiers = tiersBdt.map { countryRegion.convertFromBdt(it) }
-    val selectedTier = countryRegion.convertFromBdt(selectedTierBdt)
+    val safeTiersBdt = if (tiersBdt.size >= 4) tiersBdt else listOf(minWithdrawBdt, 10000.0, 20000.0, 30000.0)
+    val tiers = safeTiersBdt.map { countryRegion.convertFromBdt(it) }
+    val effectiveSelectedTierBdt = maxOf(selectedTierBdt, minWithdrawBdt)
+    val selectedTier = countryRegion.convertFromBdt(effectiveSelectedTierBdt)
     val neededAmount = (selectedTier - balance).coerceAtLeast(0.0)
     val progressFraction = (balance / selectedTier.coerceAtLeast(0.01)).toFloat().coerceIn(0.04f, 1f)
     val options = countryRegion.mobileBankingOptions
@@ -136,67 +153,28 @@ fun WithdrawScreen(
                     fontWeight = FontWeight.Black
                 )
 
-                // Active Country Badge
-                Row(
+                // User Profile Button in Top Bar
+                Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(50))
-                        .background(Color(0xFF1E3A8A))
-                        .border(1.dp, Color(0xFF93C5FD), RoundedCornerShape(50))
-                        .padding(horizontal = 10.dp, vertical = 5.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .height(42.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xFFFACC15))
+                        .border(1.5.dp, Color.White, RoundedCornerShape(12.dp))
+                        .clickable { onOpenUserAuthModal() }
+                        .padding(horizontal = 10.dp)
+                        .testTag("withdraw_profile_button"),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Text(text = countryRegion.flagEmoji, fontSize = 15.sp)
-                    Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = countryRegion.countryCode,
-                        color = Color.White,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.ExtraBold
+                        text = if (isUserLoggedIn) "👤 Profile" else "🔐 Login",
+                        color = Color(0xFF0F172A),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Black
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Country / Mobile Banking Quick Switcher Bar so users can see auto-detected country or switch
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                for (region in CountryRegion.entries) {
-                    val isSelected = region == countryRegion
-                    Row(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(50))
-                            .background(
-                                if (isSelected) Color(0xFFFDE047)
-                                else Color(0xFF1E40AF).copy(alpha = 0.7f)
-                            )
-                            .border(
-                                width = 1.5.dp,
-                                color = if (isSelected) Color.White else Color(0xFF60A5FA),
-                                shape = RoundedCornerShape(50)
-                            )
-                            .clickable { onSelectCountryRegion(region) }
-                            .padding(horizontal = 12.dp, vertical = 6.dp)
-                            .testTag("withdraw_region_${region.countryCode}"),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(text = region.flagEmoji, fontSize = 14.sp)
-                        Spacer(modifier = Modifier.width(5.dp))
-                        Text(
-                            text = "${region.countryCode} (${region.mobileBankingOptions.first().displayName})",
-                            color = if (isSelected) Color(0xFF0F172A) else Color.White,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.ExtraBold
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             // Golden Balance Card
             Box(
@@ -214,38 +192,24 @@ fun WithdrawScreen(
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(
+                                Brush.horizontalGradient(
+                                    colors = listOf(Color(0xFFA855F7), Color(0xFF9333EA))
+                                )
+                            )
+                            .border(1.5.dp, Color.White, RoundedCornerShape(50))
+                            .padding(horizontal = 14.dp, vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(50))
-                                .background(
-                                    Brush.horizontalGradient(
-                                        colors = listOf(Color(0xFFA855F7), Color(0xFF9333EA))
-                                    )
-                                )
-                                .border(1.5.dp, Color.White, RoundedCornerShape(50))
-                                .padding(horizontal = 14.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(text = "👛", fontSize = 13.sp)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = strings.currentBalanceLabel,
-                                color = Color.White,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-
-                        // Local mobile banking methods badge
+                        Text(text = "👛", fontSize = 13.sp)
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = options.joinToString(" • ") { it.displayName },
-                            color = Color(0xFF92400E),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.ExtraBold
+                            text = strings.currentBalanceLabel,
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
                         )
                     }
 
@@ -259,25 +223,6 @@ fun WithdrawScreen(
                         textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth()
                     )
-
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    // BDT to Local Currency Conversion Badge (e.g. 1 Ad = ৳10 BDT = ₹7.10 INR / $0.08 USD)
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.CenterHorizontally)
-                            .clip(RoundedCornerShape(50))
-                            .background(Color.White.copy(alpha = 0.72f))
-                            .border(1.dp, Color(0xFFF59E0B), RoundedCornerShape(50))
-                            .padding(horizontal = 12.dp, vertical = 3.dp)
-                    ) {
-                        Text(
-                            text = "💱 ${countryRegion.oneAdConversionBadge()}",
-                            color = Color(0xFF78350F),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.ExtraBold
-                        )
-                    }
                 }
             }
 
@@ -339,15 +284,15 @@ fun WithdrawScreen(
                         TierClipboardCard(
                             amount = tiers[0],
                             currencySymbol = currencySymbol,
-                            isSelected = selectedTierBdt == tiersBdt[0],
-                            onClick = { onSelectTierBdt(tiersBdt[0]) },
+                            isSelected = selectedTierBdt == safeTiersBdt[0],
+                            onClick = { onSelectTierBdt(safeTiersBdt[0]) },
                             modifier = Modifier.weight(1f)
                         )
                         TierClipboardCard(
                             amount = tiers[1],
                             currencySymbol = currencySymbol,
-                            isSelected = selectedTierBdt == tiersBdt[1],
-                            onClick = { onSelectTierBdt(tiersBdt[1]) },
+                            isSelected = selectedTierBdt == safeTiersBdt[1],
+                            onClick = { onSelectTierBdt(safeTiersBdt[1]) },
                             modifier = Modifier.weight(1f)
                         )
                     }
@@ -358,15 +303,15 @@ fun WithdrawScreen(
                         TierClipboardCard(
                             amount = tiers[2],
                             currencySymbol = currencySymbol,
-                            isSelected = selectedTierBdt == tiersBdt[2],
-                            onClick = { onSelectTierBdt(tiersBdt[2]) },
+                            isSelected = selectedTierBdt == safeTiersBdt[2],
+                            onClick = { onSelectTierBdt(safeTiersBdt[2]) },
                             modifier = Modifier.weight(1f)
                         )
                         TierClipboardCard(
                             amount = tiers[3],
                             currencySymbol = currencySymbol,
-                            isSelected = selectedTierBdt == tiersBdt[3],
-                            onClick = { onSelectTierBdt(tiersBdt[3]) },
+                            isSelected = selectedTierBdt == safeTiersBdt[3],
+                            onClick = { onSelectTierBdt(safeTiersBdt[3]) },
                             modifier = Modifier.weight(1f)
                         )
                     }
@@ -511,6 +456,240 @@ fun WithdrawScreen(
                     fontWeight = FontWeight.Black
                 )
             }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // User Account / Registration Status Card (Required before withdrawal)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(Color(0xFF1E3A8A).copy(alpha = 0.9f))
+                    .border(
+                        width = 1.5.dp,
+                        color = if (isUserLoggedIn) Color(0xFF22C55E) else Color(0xFFFDE047),
+                        shape = RoundedCornerShape(18.dp)
+                    )
+                    .padding(horizontal = 14.dp, vertical = 12.dp)
+                    .testTag("user_account_status_card")
+            ) {
+                if (isUserLoggedIn && userId.isNotBlank()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "👤 $userFullName",
+                                color = Color(0xFFFDE047),
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Black
+                            )
+                            Text(
+                                text = "$userEmailOrPhone • ID: $userId",
+                                color = Color(0xFFBAE6FD),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(Color(0xFFFACC15))
+                                    .border(1.dp, Color.White, RoundedCornerShape(10.dp))
+                                    .clickable { onOpenUserAuthModal() }
+                                    .padding(horizontal = 9.dp, vertical = 6.dp)
+                                    .testTag("edit_user_profile_button")
+                            ) {
+                                Text(
+                                    text = "✏️ Edit Profile",
+                                    color = Color(0xFF0F172A),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Black
+                                )
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(Color(0xFF2563EB))
+                                    .border(1.dp, Color(0xFF93C5FD), RoundedCornerShape(10.dp))
+                                    .clickable { onRefreshWithdrawalStatuses() }
+                                    .padding(horizontal = 9.dp, vertical = 6.dp)
+                                    .testTag("sync_firebase_status_button")
+                            ) {
+                                Text(
+                                    text = "🔄 Sync",
+                                    color = Color.White,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Black
+                                )
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(Color(0xFFEF4444))
+                                    .clickable { onLogoutUser() }
+                                    .padding(horizontal = 9.dp, vertical = 6.dp)
+                                    .testTag("user_logout_button")
+                            ) {
+                                Text(
+                                    text = "Logout",
+                                    color = Color.White,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Black
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onOpenUserAuthModal() },
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "🔐 User Account (Login / Register)",
+                                color = Color(0xFFFDE047),
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Black
+                            )
+                            Text(
+                                text = "Register or Login to submit withdrawal requests",
+                                color = Color.White,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color(0xFFFACC15))
+                                .border(1.5.dp, Color.White, RoundedCornerShape(12.dp))
+                                .clickable { onOpenUserAuthModal() }
+                                .padding(horizontal = 12.dp, vertical = 7.dp)
+                                .testTag("open_user_auth_button")
+                        ) {
+                            Text(
+                                text = "Register / Login",
+                                color = Color(0xFF0F172A),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Black
+                            )
+                        }
+                    }
+                }
+            }
+
+            // User Withdrawal History & Live Status Tracker
+            if (withdrawals.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(Color(0xFF1E3A8A).copy(alpha = 0.85f))
+                        .border(1.5.dp, Color(0xFF93C5FD), RoundedCornerShape(18.dp))
+                        .padding(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "📋 Withdrawal History (${withdrawals.size})",
+                            color = Color(0xFFFDE047),
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Black
+                        )
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFF2563EB))
+                                .clickable { onRefreshWithdrawalStatuses() }
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = "🔄 Refresh Status",
+                                color = Color.White,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    for (rec in withdrawals.take(8)) {
+                        val badgeColor = when (rec.status) {
+                            "PAID", "APPROVED" -> Color(0xFF22C55E)
+                            "REJECTED" -> Color(0xFFEF4444)
+                            else -> Color(0xFFFACC15)
+                        }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color(0xFF0F172A).copy(alpha = 0.75f))
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "${rec.requestCode} • ${rec.currencySymbol}${"%,.2f".format(rec.localAmount)} (${rec.method})",
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                                Text(
+                                    text = "Acc: ${rec.accountNumber} (${rec.accountName})",
+                                    color = Color(0xFF94A3B8),
+                                    fontSize = 11.sp
+                                )
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(50))
+                                    .background(badgeColor.copy(alpha = 0.2f))
+                                    .border(1.dp, badgeColor, RoundedCornerShape(50))
+                                    .padding(horizontal = 10.dp, vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = rec.status,
+                                    color = badgeColor,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Black
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Modal 0: User Profile (Edit Profile) & Registration / Login / Forgot Password Modal
+        if (showUserAuthModal) {
+            UserAuthModal(
+                isUserLoggedIn = isUserLoggedIn,
+                userId = userId,
+                initialName = userFullName.ifBlank { savedAccountName },
+                initialEmailOrPhone = userEmailOrPhone.ifBlank { savedAccountNumber },
+                initialSavedWallet = savedAccountNumber,
+                onRegister = onRegisterUser,
+                onLogin = onLoginUser,
+                onUpdateProfile = onUpdateUserProfile,
+                onResetPassword = onResetPassword,
+                onLogout = onLogoutUser,
+                onClose = onCloseModals
+            )
         }
 
         // Modal 1: Country-Specific Mobile Banking Account Input Modal
@@ -518,8 +697,10 @@ fun WithdrawScreen(
             AccountDetailsInputModal(
                 countryRegion = countryRegion,
                 initialOption = currentOption,
-                initialAccount = savedAccountNumber,
-                initialName = savedAccountName,
+                initialAccount = savedAccountNumber.ifBlank {
+                    if (userEmailOrPhone.all { it.isDigit() || it == '+' }) userEmailOrPhone else ""
+                },
+                initialName = savedAccountName.ifBlank { userFullName },
                 strings = strings,
                 onSelectCountryRegion = onSelectCountryRegion,
                 onSubmit = onSaveAccountDetails,
@@ -537,6 +718,568 @@ fun WithdrawScreen(
                 onConfirm = onConfirmWithdraw,
                 onClose = onCloseModals
             )
+        }
+    }
+}
+
+@Composable
+fun UserAuthModal(
+    isUserLoggedIn: Boolean = false,
+    userId: String = "",
+    initialName: String = "",
+    initialEmailOrPhone: String = "",
+    initialSavedWallet: String = "",
+    onRegister: (String, String, String) -> Unit,
+    onLogin: (String, String) -> Unit,
+    onUpdateProfile: (String, String, String, String) -> Unit = { _, _, _, _ -> },
+    onResetPassword: (String, String, String) -> Unit = { _, _, _ -> },
+    onLogout: () -> Unit = {},
+    onClose: () -> Unit
+) {
+    // Mode: 0 = Register, 1 = Login, 2 = Forgot Password, 3 = Edit Profile (when logged in)
+    var authTab by remember(isUserLoggedIn) { mutableStateOf(if (isUserLoggedIn) 3 else 1) }
+    var fullName by remember(initialName) { mutableStateOf(initialName) }
+    var emailOrPhone by remember(initialEmailOrPhone) { mutableStateOf(initialEmailOrPhone) }
+    var savedWallet by remember(initialSavedWallet) { mutableStateOf(initialSavedWallet) }
+    var password by remember { mutableStateOf("") }
+    var confirmPassword by remember { mutableStateOf("") }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.68f))
+            .clickable(enabled = true, onClick = {})
+            .padding(horizontal = 16.dp)
+            .testTag("user_auth_modal"),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier.fillMaxWidth(),
+            contentAlignment = Alignment.TopCenter
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(top = 24.dp)
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(26.dp))
+                    .background(Color(0xFF60A5FA))
+                    .border(3.dp, Color(0xFF2563EB), RoundedCornerShape(26.dp))
+                    .padding(10.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color(0xFFF8FAFC))
+                    .verticalScroll(rememberScrollState())
+                    .padding(top = 30.dp, bottom = 18.dp, start = 16.dp, end = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                if (isUserLoggedIn && authTab == 3) {
+                    // ==================== EDITABLE USER PROFILE VIEW ====================
+                    Box(
+                        modifier = Modifier
+                            .size(62.dp)
+                            .clip(CircleShape)
+                            .background(
+                                Brush.verticalGradient(
+                                    colors = listOf(Color(0xFF3B82F6), Color(0xFF1D4ED8))
+                                )
+                            )
+                            .border(2.5.dp, Color(0xFFFDE047), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = fullName.trim().take(1).uppercase().ifEmpty { "👤" },
+                            color = Color.White,
+                            fontSize = 26.sp,
+                            fontWeight = FontWeight.Black
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Text(
+                        text = if (userId.isNotBlank()) "User ID: $userId • Verified Account" else "Verified Player Profile",
+                        color = Color(0xFF15803D),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                    Text(
+                        text = "Edit your profile details, wallet number, or change your password below",
+                        color = Color(0xFF475569),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Text(
+                        text = "👤 Full Name",
+                        color = Color(0xFF1E3A8A),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    BasicTextField(
+                        value = fullName,
+                        onValueChange = { fullName = it },
+                        singleLine = true,
+                        textStyle = TextStyle(
+                            color = Color(0xFF0F172A),
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFFDBEAFE))
+                            .border(1.5.dp, Color(0xFF93C5FD), RoundedCornerShape(10.dp))
+                            .padding(horizontal = 12.dp, vertical = 11.dp)
+                            .testTag("profile_full_name_input")
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Text(
+                        text = "📱 Mobile Number or Email",
+                        color = Color(0xFF1E3A8A),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    BasicTextField(
+                        value = emailOrPhone,
+                        onValueChange = { emailOrPhone = it },
+                        singleLine = true,
+                        textStyle = TextStyle(
+                            color = Color(0xFF0F172A),
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFFDBEAFE))
+                            .border(1.5.dp, Color(0xFF93C5FD), RoundedCornerShape(10.dp))
+                            .padding(horizontal = 12.dp, vertical = 11.dp)
+                            .testTag("profile_email_phone_input")
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Text(
+                        text = "💳 Default Withdrawal Wallet Number",
+                        color = Color(0xFF1E3A8A),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    BasicTextField(
+                        value = savedWallet,
+                        onValueChange = { savedWallet = it },
+                        singleLine = true,
+                        textStyle = TextStyle(
+                            color = Color(0xFF0F172A),
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFFDBEAFE))
+                            .border(1.5.dp, Color(0xFF93C5FD), RoundedCornerShape(10.dp))
+                            .padding(horizontal = 12.dp, vertical = 11.dp)
+                            .testTag("profile_wallet_input")
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Text(
+                        text = "🔑 New Password (leave blank to keep current)",
+                        color = Color(0xFF1E3A8A),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    BasicTextField(
+                        value = password,
+                        onValueChange = { password = it },
+                        singleLine = true,
+                        textStyle = TextStyle(
+                            color = Color(0xFF0F172A),
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFFDBEAFE))
+                            .border(1.5.dp, Color(0xFF93C5FD), RoundedCornerShape(10.dp))
+                            .padding(horizontal = 12.dp, vertical = 11.dp)
+                            .testTag("profile_new_password_input")
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Save Profile Button
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                            .shadow(6.dp, RoundedCornerShape(14.dp))
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(
+                                Brush.verticalGradient(
+                                    colors = listOf(Color(0xFF86EFAC), Color(0xFF22C55E), Color(0xFF16A34A))
+                                )
+                            )
+                            .border(2.dp, Color(0xFF15803D), RoundedCornerShape(14.dp))
+                            .clickable {
+                                onUpdateProfile(fullName, emailOrPhone, savedWallet, password)
+                            }
+                            .testTag("save_user_profile_button"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "💾 Save Profile Changes",
+                            color = Color.White,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Black
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Logout Button inside Profile
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(42.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFFFEE2E2))
+                            .border(1.5.dp, Color(0xFFEF4444), RoundedCornerShape(12.dp))
+                            .clickable {
+                                onLogout()
+                                onClose()
+                            }
+                            .testTag("profile_logout_button"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "🚪 Logout Account",
+                            color = Color(0xFFB91C1C),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Black
+                        )
+                    }
+                } else {
+                    // ==================== REGISTER / LOGIN / FORGOT PASSWORD TABS ====================
+                    Text(
+                        text = when (authTab) {
+                            0 -> "Create a new account to withdraw your earnings"
+                            1 -> "Sign in with your registered mobile number/email and password"
+                            else -> "Forgot your password? Verify your registered mobile/email to set a new password"
+                        },
+                        color = Color(0xFF1E3A8A),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        textAlign = TextAlign.Center
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // 3 Tabs: Login | Register | Forgot Password
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color(0xFFDBEAFE))
+                            .padding(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(38.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (authTab == 1) Color(0xFF2563EB) else Color.Transparent)
+                                .clickable { authTab = 1 }
+                                .testTag("tab_user_login"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "🔐 Login",
+                                color = if (authTab == 1) Color.White else Color(0xFF1E3A8A),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Black
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(38.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (authTab == 0) Color(0xFF2563EB) else Color.Transparent)
+                                .clickable { authTab = 0 }
+                                .testTag("tab_user_register"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "📝 Register",
+                                color = if (authTab == 0) Color.White else Color(0xFF1E3A8A),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Black
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .weight(1.15f)
+                                .height(38.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (authTab == 2) Color(0xFFD97706) else Color.Transparent)
+                                .clickable { authTab = 2 }
+                                .testTag("tab_user_forgot_password"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "🔑 Forgot?",
+                                color = if (authTab == 2) Color.White else Color(0xFF92400E),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Black
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    if (authTab == 0) {
+                        Text(
+                            text = "👤 Full Name",
+                            color = Color(0xFF1E3A8A),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(modifier = Modifier.height(5.dp))
+                        BasicTextField(
+                            value = fullName,
+                            onValueChange = { fullName = it },
+                            singleLine = true,
+                            textStyle = TextStyle(
+                                color = Color(0xFF0F172A),
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(44.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Color(0xFFDBEAFE))
+                                .border(1.5.dp, Color(0xFF93C5FD), RoundedCornerShape(10.dp))
+                                .padding(horizontal = 12.dp, vertical = 11.dp)
+                                .testTag("auth_full_name_input")
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                    }
+
+                    Text(
+                        text = "📱 Registered Mobile Number or Email",
+                        color = Color(0xFF1E3A8A),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(5.dp))
+                    BasicTextField(
+                        value = emailOrPhone,
+                        onValueChange = { emailOrPhone = it },
+                        singleLine = true,
+                        textStyle = TextStyle(
+                            color = Color(0xFF0F172A),
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFFDBEAFE))
+                            .border(1.5.dp, Color(0xFF93C5FD), RoundedCornerShape(10.dp))
+                            .padding(horizontal = 12.dp, vertical = 11.dp)
+                            .testTag("auth_email_phone_input")
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Text(
+                        text = if (authTab == 2) "🔑 New Password (min 4 characters)" else "🔑 Password (minimum 4 characters)",
+                        color = Color(0xFF1E3A8A),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(5.dp))
+                    BasicTextField(
+                        value = password,
+                        onValueChange = { password = it },
+                        singleLine = true,
+                        textStyle = TextStyle(
+                            color = Color(0xFF0F172A),
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFFDBEAFE))
+                            .border(1.5.dp, Color(0xFF93C5FD), RoundedCornerShape(10.dp))
+                            .padding(horizontal = 12.dp, vertical = 11.dp)
+                            .testTag("auth_password_input")
+                    )
+
+                    if (authTab == 2) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = "🔐 Confirm New Password",
+                            color = Color(0xFF1E3A8A),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(modifier = Modifier.height(5.dp))
+                        BasicTextField(
+                            value = confirmPassword,
+                            onValueChange = { confirmPassword = it },
+                            singleLine = true,
+                            textStyle = TextStyle(
+                                color = Color(0xFF0F172A),
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(44.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Color(0xFFDBEAFE))
+                                .border(1.5.dp, Color(0xFF93C5FD), RoundedCornerShape(10.dp))
+                                .padding(horizontal = 12.dp, vertical = 11.dp)
+                                .testTag("auth_confirm_password_input")
+                        )
+                    } else if (authTab == 1) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            Text(
+                                text = "🔑 Forgot Password?",
+                                color = Color(0xFFD97706),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Black,
+                                modifier = Modifier
+                                    .clickable { authTab = 2 }
+                                    .padding(vertical = 4.dp)
+                                    .testTag("forgot_password_link")
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(0.9f)
+                            .height(50.dp)
+                            .shadow(8.dp, RoundedCornerShape(16.dp))
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(
+                                Brush.verticalGradient(
+                                    colors = if (authTab == 2) {
+                                        listOf(Color(0xFFFDE047), Color(0xFFF59E0B), Color(0xFFD97706))
+                                    } else {
+                                        listOf(Color(0xFF86EFAC), Color(0xFF22C55E), Color(0xFF16A34A))
+                                    }
+                                )
+                            )
+                            .border(
+                                2.dp,
+                                if (authTab == 2) Color(0xFFB45309) else Color(0xFF15803D),
+                                RoundedCornerShape(16.dp)
+                            )
+                            .clickable {
+                                when (authTab) {
+                                    0 -> onRegister(fullName, emailOrPhone, password)
+                                    1 -> onLogin(emailOrPhone, password)
+                                    2 -> onResetPassword(emailOrPhone, password, confirmPassword)
+                                }
+                            }
+                            .testTag("submit_user_auth_button"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = when (authTab) {
+                                0 -> "✅ Register & Continue"
+                                1 -> "🔐 Login & Continue"
+                                else -> "🔄 Reset Password & Login"
+                            },
+                            color = Color.White,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Black
+                        )
+                    }
+                }
+            }
+
+            // Floating Yellow Header
+            Box(
+                modifier = Modifier
+                    .shadow(8.dp, RoundedCornerShape(18.dp))
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(Color(0xFFFDE047), Color(0xFFFACC15), Color(0xFFEAB308))
+                        )
+                    )
+                    .border(2.dp, Color(0xFFCA8A04), RoundedCornerShape(18.dp))
+                    .padding(horizontal = 22.dp, vertical = 10.dp)
+            ) {
+                Text(
+                    text = if (isUserLoggedIn && authTab == 3) {
+                        "👤 My User Profile"
+                    } else {
+                        when (authTab) {
+                            0 -> "📝 User Registration"
+                            1 -> "🔐 User Login"
+                            else -> "🔑 Forgot Password"
+                        }
+                    },
+                    color = Color(0xFF9A3412),
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Black
+                )
+            }
+
+            // Red 'X' close button
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .offset(x = (-2).dp, y = 10.dp)
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color(0xFFEF4444))
+                    .border(2.dp, Color(0xFF991B1B), RoundedCornerShape(10.dp))
+                    .clickable { onClose() },
+                contentAlignment = Alignment.Center
+            ) {
+                Text("✕", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Black)
+            }
         }
     }
 }
@@ -658,54 +1401,19 @@ private fun AccountDetailsInputModal(
                     .padding(top = 28.dp, bottom = 18.dp, start = 14.dp, end = 14.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Country Flag & Local Banking Header
+                // Local Banking Header (Auto-configured by Language/Country)
                 Text(
-                    text = "${countryRegion.flagEmoji} ${countryRegion.countryName} • ${strings.selectAccountMethodSubtitle}",
+                    text = strings.selectAccountMethodSubtitle,
                     color = Color(0xFF1E3A8A),
                     fontSize = 14.sp,
                     fontWeight = FontWeight.ExtraBold,
                     textAlign = TextAlign.Center
                 )
 
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Quick Country Selector chips inside the modal so user can test BD (bKash/Nagad/Rocket), IN (PhonePe/Paytm), etc.
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    for (reg in CountryRegion.entries) {
-                        val isRegSelected = reg == countryRegion
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(50))
-                                .background(
-                                    if (isRegSelected) Color(0xFFFACC15) else Color(0xFFE2E8F0)
-                                )
-                                .border(
-                                    width = 1.dp,
-                                    color = if (isRegSelected) Color(0xFF15803D) else Color(0xFF94A3B8),
-                                    shape = RoundedCornerShape(50)
-                                )
-                                .clickable { onSelectCountryRegion(reg) }
-                                .padding(horizontal = 10.dp, vertical = 4.dp)
-                        ) {
-                            Text(
-                                text = "${reg.flagEmoji} ${reg.countryCode}",
-                                color = Color(0xFF0F172A),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                }
-
                 Spacer(modifier = Modifier.height(10.dp))
 
                 // 2x2 Grid of Country-Specific Local Mobile Banking Methods!
-                // e.g. Bangladesh -> নগদ, bKash, রকেট, উপায়
+                // e.g. Bangladesh -> Nagad, bKash, Rocket, Upay
                 // e.g. India -> PhonePe, Paytm, Google Pay, BHIM UPI
                 if (options.size >= 4) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

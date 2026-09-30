@@ -30,8 +30,20 @@ interface GameDao {
     @Query("SELECT * FROM withdrawal_records ORDER BY timestamp DESC")
     fun getWithdrawals(): Flow<List<WithdrawalRecordEntity>>
 
+    @Query("SELECT * FROM withdrawal_records WHERE id = :id LIMIT 1")
+    suspend fun getWithdrawalById(id: Int): WithdrawalRecordEntity?
+
+    @Query("SELECT * FROM withdrawal_records ORDER BY timestamp DESC")
+    suspend fun getWithdrawalsOnce(): List<WithdrawalRecordEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertWithdrawal(record: WithdrawalRecordEntity)
+
+    @Query("UPDATE withdrawal_records SET status = :newStatus WHERE id = :id")
+    suspend fun updateWithdrawalStatus(id: Int, newStatus: String)
+
+    @Query("DELETE FROM withdrawal_records WHERE id = :id")
+    suspend fun deleteWithdrawal(id: Int)
 }
 
 @Database(
@@ -40,7 +52,7 @@ interface GameDao {
         ClaimedTaskEntity::class,
         WithdrawalRecordEntity::class
     ],
-    version = 4,
+    version = 9,
     exportSchema = false
 )
 abstract class GameDatabase : RoomDatabase() {

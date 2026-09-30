@@ -94,6 +94,8 @@ data class GameUiState(
     val isSimulatingAd: Boolean = false,
     // Stored in Base BDT (5000, 8000, 10000, 20000 BDT) and converted to local currency for display
     val selectedWithdrawTierBdt: Double = 5000.0,
+    val showUserAuthModal: Boolean = false,
+    val pendingWithdrawAfterAuth: Boolean = false,
     val showAccountInputModal: Boolean = false,
     val showWithdrawConfirmModal: Boolean = false,
     val tickerIndex: Int = 0,
@@ -120,11 +122,11 @@ data class GameUiState(
         get() = countryRegion.convertFromBdt(selectedWithdrawTierBdt)
 
     /**
-     * Reward for watching 1 Video Ad (Base = 10.00 BDT) converted to the active country's currency.
-     * e.g. Bangladesh = ৳ 10.00, India = ₹ 7.10, English/US = $ 0.08, Indonesia = Rp 1,325.00
+     * Reward for watching 1 Video Ad (controlled by Admin Panel perAdRewardBdt, default 10.00 BDT)
+     * converted to the active country's currency.
      */
     val oneAdRewardDisplay: Double
-        get() = countryRegion.oneAdRewardLocal()
+        get() = countryRegion.convertFromBdt(player.perAdRewardBdt)
 }
 
 class GameViewModel(
@@ -153,6 +155,21 @@ class GameViewModel(
                     )
                 }
                 initialPlayer = repository.ensureInitialized()
+            }
+
+            // Sync remote Admin Panel settings (Ads, Daily Tasks, Min Withdrawal) in background
+            launch {
+                val synced = repository.syncRemoteAdminSettings()
+                _uiState.update { st ->
+                    val tiers = listOf(
+                        synced.withdrawTier1Bdt,
+                        synced.withdrawTier2Bdt,
+                        synced.withdrawTier3Bdt,
+                        synced.withdrawTier4Bdt
+                    )
+                    val validTier = if (st.selectedWithdrawTierBdt in tiers) st.selectedWithdrawTierBdt else synced.withdrawTier1Bdt
+                    st.copy(selectedWithdrawTierBdt = validTier)
+                }
             }
 
             loadLevelInternal(initialPlayer.currentLevel)
@@ -219,11 +236,7 @@ class GameViewModel(
                     currentPlayer.soundEnabled,
                     currentPlayer.vibrationEnabled
                 )
-                val bonusToast = if (region == CountryRegion.BANGLADESH) {
-                    "🎁 স্বাগতম বোনাস: +৳100.00 যোগ হয়েছে!"
-                } else {
-                    "🎁 Install Bonus (৳100 BDT): +$sym%.2f Added!".format(installBonusLocal)
-                }
+                val bonusToast = "🎁 Install Bonus: +$sym%.2f Added!".format(installBonusLocal)
                 showToast(bonusToast)
             }
         }
@@ -291,7 +304,7 @@ class GameViewModel(
                     savedPaymentMethod = firstMethod
                 )
             }
-            showToast("${lang.flagEmoji} ${lang.nativeName} (${matchedRegion.currencySymbol}) • ${matchedRegion.oneAdConversionBadge()}")
+            showToast("${lang.flagEmoji} ${lang.nativeName} (${matchedRegion.currencySymbol})")
         }
     }
 
@@ -301,11 +314,7 @@ class GameViewModel(
         if (safeLevel > state.player.maxUnlockedLevel) {
             soundManager.playBlockedError(state.player.soundEnabled, state.player.vibrationEnabled)
             val prevLvl = state.player.maxUnlockedLevel
-            val msg = if (state.language == AppLanguage.BENGALI) {
-                "লেভেল $safeLevel লক করা আছে! আনলক করতে আগে লেভেল $prevLvl সম্পন্ন করুন।"
-            } else {
-                "Level $safeLevel is locked! Complete Level $prevLvl first to unlock."
-            }
+            val msg = "Level $safeLevel is locked! Complete Level $prevLvl first to unlock."
             showToast(msg)
             return
         }
@@ -413,8 +422,8 @@ class GameViewModel(
         val state = _uiState.value
         val region = state.countryRegion
         soundManager.playLevelWin(state.player.soundEnabled, state.player.vibrationEnabled)
-        // Level complete video ad reward = 20.00 BDT (৳ 20.00), Next Level without ad = 0.00 BDT
-        val fullBonusBdt = 20.00
+        // Level complete video ad reward controlled by Admin Panel (default = 20.00 BDT)
+        val fullBonusBdt = state.player.levelClearRewardBdt
         val baseBonusBdt = 0.0
         val nextLevel = (state.currentLevelData.levelNumber + 1).coerceAtMost(LevelGenerator.TOTAL_LEVELS)
 
@@ -464,17 +473,16 @@ class GameViewModel(
                         )
                     )
                 }
+            },
+            onLoadingStateChanged = { loading ->
+                _uiState.update { it.copy(isSimulatingAd = loading) }
             }
         )
     }
 
     fun onDismissRewardedAdEarly() {
         _uiState.update { it.copy(pendingRewardedAd = null) }
-        val state = _uiState.value
-        showToast(
-            if (state.language == AppLanguage.BENGALI) "পুরস্কার পেতে সম্পূর্ণ ভিডিও দেখুন!"
-            else "Watch the full video to earn the reward!"
-        )
+        showToast("Watch the full video to earn the reward!")
     }
 
     fun onFallbackRewardedAdCompleted() {
@@ -551,9 +559,8 @@ class GameViewModel(
                 }
 
                 PendingRewardVideoType.WATCH_TO_EARN_BONUS -> {
-                    // Base reward for 1 Video Ad = 10.00 BDT (৳ 10.00)
-                    // Converted to user's country currency (e.g. ₹ 7.10 in India, $ 0.08 in USD, Rp 1,325 in Indonesia)
-                    val bonusBdt = CountryRegion.BASE_AD_REWARD_BDT
+                    // Base reward for 1 Video Ad controlled from Admin Panel (default = 10.00 BDT)
+                    val bonusBdt = state.player.perAdRewardBdt
                     val displayBonus = region.convertFromBdt(bonusBdt)
                     repository.updateState { p -> p.copy(balance = p.balance + bonusBdt) }
                     soundManager.playArrowClearAndCash(
@@ -663,6 +670,11 @@ class GameViewModel(
         val state = _uiState.value
         soundManager.playClick(state.player.soundEnabled, state.player.vibrationEnabled)
         _uiState.update { it.copy(showTaskCenter = visible) }
+        if (visible) {
+            viewModelScope.launch {
+                repository.syncRemoteAdminSettings()
+            }
+        }
     }
 
     fun setTaskTabCareer(isCareer: Boolean) {
@@ -768,6 +780,10 @@ class GameViewModel(
         val state = _uiState.value
         soundManager.playClick(state.player.soundEnabled, state.player.vibrationEnabled)
         _uiState.update { it.copy(screen = ActiveScreen.WITHDRAW) }
+        viewModelScope.launch {
+            repository.syncRemoteAdminSettings()
+            repository.refreshWithdrawalStatusesFromFirebase()
+        }
     }
 
     fun navigateBackToGame() {
@@ -776,6 +792,8 @@ class GameViewModel(
         _uiState.update {
             it.copy(
                 screen = ActiveScreen.GAME,
+                showUserAuthModal = false,
+                pendingWithdrawAfterAuth = false,
                 showAccountInputModal = false,
                 showWithdrawConfirmModal = false
             )
@@ -788,18 +806,229 @@ class GameViewModel(
         _uiState.update { it.copy(selectedWithdrawTierBdt = tierBdtAmount) }
     }
 
+    /**
+     * Triggered when user clicks the Withdraw button.
+     * If user is NOT registered/logged in yet, opens the User Registration & Login modal first.
+     * Once registered/logged in, opens the Mobile Banking Account Details modal.
+     */
     fun openAccountInputModal() {
         val state = _uiState.value
         soundManager.playClick(state.player.soundEnabled, state.player.vibrationEnabled)
-        _uiState.update { it.copy(showAccountInputModal = true) }
+        if (!state.player.isUserLoggedIn || state.player.userId.isBlank()) {
+            _uiState.update {
+                it.copy(
+                    showUserAuthModal = true,
+                    pendingWithdrawAfterAuth = true
+                )
+            }
+        } else {
+            _uiState.update { it.copy(showAccountInputModal = true) }
+        }
+    }
+
+    fun openUserAuthModal(proceedToWithdraw: Boolean = false) {
+        val state = _uiState.value
+        soundManager.playClick(state.player.soundEnabled, state.player.vibrationEnabled)
+        _uiState.update {
+            it.copy(
+                showUserAuthModal = true,
+                pendingWithdrawAfterAuth = proceedToWithdraw,
+                showSettingsDialog = false
+            )
+        }
     }
 
     fun closeWithdrawModals() {
         _uiState.update {
             it.copy(
+                showUserAuthModal = false,
+                pendingWithdrawAfterAuth = false,
                 showAccountInputModal = false,
                 showWithdrawConfirmModal = false
             )
+        }
+    }
+
+    fun registerUserAccount(fullName: String, emailOrPhone: String, password: String) {
+        val state = _uiState.value
+        soundManager.playClick(state.player.soundEnabled, state.player.vibrationEnabled)
+        val cleanName = fullName.trim()
+        val cleanId = emailOrPhone.trim()
+        val cleanPass = password.trim()
+
+        if (cleanName.length < 2) {
+            showToast("Please enter your full name!")
+            return
+        }
+        if (cleanId.length < 5) {
+            showToast("Please enter a valid mobile number or email!")
+            return
+        }
+        if (cleanPass.length < 4) {
+            showToast("Password must be at least 4 characters!")
+            return
+        }
+
+        val shouldOpenWithdrawNext = state.pendingWithdrawAfterAuth
+        viewModelScope.launch {
+            val registered = repository.registerUser(cleanName, cleanId, cleanPass)
+            _uiState.update {
+                it.copy(
+                    player = registered,
+                    showUserAuthModal = false,
+                    pendingWithdrawAfterAuth = false,
+                    showAccountInputModal = shouldOpenWithdrawNext
+                )
+            }
+            showToast("✅ Registration & Login Successful! (${registered.userId})")
+        }
+    }
+
+    fun loginUserAccount(emailOrPhone: String, password: String) {
+        val state = _uiState.value
+        soundManager.playClick(state.player.soundEnabled, state.player.vibrationEnabled)
+        val cleanId = emailOrPhone.trim()
+        val cleanPass = password.trim()
+
+        if (cleanId.length < 5) {
+            showToast("Enter your registered mobile or email!")
+            return
+        }
+        if (cleanPass.length < 4) {
+            showToast("Please enter your password!")
+            return
+        }
+
+        val shouldOpenWithdrawNext = state.pendingWithdrawAfterAuth
+        viewModelScope.launch {
+            val res = repository.loginUser(cleanId, cleanPass)
+            res.onSuccess { loggedInPlayer ->
+                _uiState.update {
+                    it.copy(
+                        player = loggedInPlayer,
+                        showUserAuthModal = false,
+                        pendingWithdrawAfterAuth = false,
+                        showAccountInputModal = shouldOpenWithdrawNext
+                    )
+                }
+                showToast("✅ Login Successful! Welcome ${loggedInPlayer.userFullName}")
+            }.onFailure { err ->
+                val msg = when (err.message) {
+                    "INVALID_PASSWORD" -> "❌ Incorrect password! Please try again."
+                    else -> "Account not found! Please Register first."
+                }
+                showToast(msg)
+            }
+        }
+    }
+
+    fun logoutUserAccount() {
+        val state = _uiState.value
+        soundManager.playClick(state.player.soundEnabled, state.player.vibrationEnabled)
+        viewModelScope.launch {
+            repository.logoutUser()
+            _uiState.update { it.copy(showUserAuthModal = false) }
+            showToast("Logged out successfully.")
+        }
+    }
+
+    fun updateUserProfile(
+        fullName: String,
+        emailOrPhone: String,
+        walletAccount: String,
+        newPassword: String
+    ) {
+        val state = _uiState.value
+        soundManager.playClick(state.player.soundEnabled, state.player.vibrationEnabled)
+        val cleanName = fullName.trim()
+        val cleanId = emailOrPhone.trim()
+        val cleanWallet = walletAccount.trim()
+        val cleanPass = newPassword.trim()
+
+        if (cleanName.length < 2) {
+            showToast("Please enter your full name!")
+            return
+        }
+        if (cleanId.length < 5) {
+            showToast("Please enter a valid mobile number or email!")
+            return
+        }
+        if (cleanPass.isNotEmpty() && cleanPass.length < 4) {
+            showToast("New password must be at least 4 characters!")
+            return
+        }
+
+        viewModelScope.launch {
+            val updated = repository.updateUserProfile(
+                fullName = cleanName,
+                emailOrPhone = cleanId,
+                walletAccount = cleanWallet,
+                newRawPassword = cleanPass
+            )
+            _uiState.update {
+                it.copy(
+                    player = updated,
+                    showUserAuthModal = false
+                )
+            }
+            showToast("✅ User Profile Updated & Synced! (${updated.userFullName})")
+        }
+    }
+
+    fun resetForgottenPassword(
+        emailOrPhone: String,
+        newPassword: String,
+        confirmPassword: String
+    ) {
+        val state = _uiState.value
+        soundManager.playClick(state.player.soundEnabled, state.player.vibrationEnabled)
+        val cleanId = emailOrPhone.trim()
+        val cleanPass = newPassword.trim()
+        val cleanConfirm = confirmPassword.trim()
+
+        if (cleanId.length < 5) {
+            showToast("Please enter your registered mobile number or email!")
+            return
+        }
+        if (cleanPass.length < 4) {
+            showToast("New password must be at least 4 characters!")
+            return
+        }
+        if (cleanPass != cleanConfirm) {
+            showToast("New password and confirm password do not match!")
+            return
+        }
+
+        val shouldOpenWithdrawNext = state.pendingWithdrawAfterAuth
+        viewModelScope.launch {
+            val res = repository.resetUserPassword(cleanId, cleanPass)
+            res.onSuccess { updatedPlayer ->
+                _uiState.update {
+                    it.copy(
+                        player = updatedPlayer,
+                        showUserAuthModal = false,
+                        pendingWithdrawAfterAuth = false,
+                        showAccountInputModal = shouldOpenWithdrawNext
+                    )
+                }
+                showToast("✅ Password Reset Successful! You are now logged in.")
+            }.onFailure {
+                showToast("❌ Account not found for '$cleanId'! Please Register first.")
+            }
+        }
+    }
+
+    fun refreshFirebaseWithdrawalStatuses() {
+        val state = _uiState.value
+        soundManager.playClick(state.player.soundEnabled, state.player.vibrationEnabled)
+        viewModelScope.launch {
+            repository.syncRemoteAdminSettings()
+            val changed = repository.refreshWithdrawalStatusesFromFirebase()
+            if (changed > 0) {
+                showToast("✅ Status updated ($changed request(s))!")
+            } else {
+                showToast("🔄 Synced withdrawal status & admin settings with server!")
+            }
         }
     }
 
@@ -842,7 +1071,19 @@ class GameViewModel(
         val state = _uiState.value
         val region = state.countryRegion
         soundManager.playClick(state.player.soundEnabled, state.player.vibrationEnabled)
-        val tierBdt = state.selectedWithdrawTierBdt
+
+        if (!state.player.isUserLoggedIn || state.player.userId.isBlank()) {
+            _uiState.update {
+                it.copy(
+                    showWithdrawConfirmModal = false,
+                    showUserAuthModal = true,
+                    pendingWithdrawAfterAuth = true
+                )
+            }
+            return
+        }
+
+        val tierBdt = maxOf(state.selectedWithdrawTierBdt, state.player.minWithdrawBdt)
         val currentBalBdt = state.player.balance
         if (currentBalBdt < tierBdt) {
             val neededLocal = region.convertFromBdt(tierBdt - currentBalBdt)
@@ -853,14 +1094,17 @@ class GameViewModel(
 
         val tierLocal = region.convertFromBdt(tierBdt)
         viewModelScope.launch {
-            repository.recordWithdrawal(
-                amount = tierBdt,
+            val created = repository.recordWithdrawal(
+                amountBdt = tierBdt,
+                localAmount = tierLocal,
+                currencySymbol = state.currencySymbol,
+                countryCode = region.countryCode,
                 method = state.player.savedPaymentMethod,
                 accountNumber = state.player.savedAccountNumber,
                 accountName = state.player.savedAccountName
             )
             _uiState.update { it.copy(showWithdrawConfirmModal = false) }
-            showToast(state.strings.withdrawSubmittedToast("%,.2f".format(tierLocal)))
+            showToast("${state.strings.withdrawSubmittedToast("%,.2f".format(tierLocal))} (Ticket: ${created.requestCode})")
         }
     }
 
@@ -904,6 +1148,8 @@ class GameViewModel(
         loc: LocalizedStrings,
         region: CountryRegion
     ): List<TaskItem> {
+        if (!player.dailyTasksEnabled) return emptyList()
+
         fun makeTask(
             id: String,
             title: String,
@@ -923,16 +1169,16 @@ class GameViewModel(
         )
 
         return listOf(
-            makeTask("daily_login", loc.dailyLoginTask, 1, 1, 25.00),
-            makeTask("daily_ad_1", loc.watchAdsTask(1), player.adsWatchedCount, 1, 10.00),
-            makeTask("daily_lvl_1", loc.completeLevelsTask(1), player.dailyLevelsCompleted, 1, 25.00),
-            makeTask("daily_lvl_3", loc.completeLevelsTask(3), player.dailyLevelsCompleted, 3, 30.00),
-            makeTask("daily_lvl_5", loc.completeLevelsTask(5), player.dailyLevelsCompleted, 5, 40.00),
-            makeTask("daily_lvl_20", loc.completeLevelsTask(20), player.dailyLevelsCompleted, 20, 75.00),
-            makeTask("daily_ad_3", loc.watchAdsTask(3), player.adsWatchedCount, 3, 30.00),
-            makeTask("daily_ad_15", loc.watchAdsTask(15), player.adsWatchedCount, 15, 150.00),
-            makeTask("daily_ad_30", loc.watchAdsTask(30), player.adsWatchedCount, 30, 300.00),
-            makeTask("daily_ad_50", loc.watchAdsTask(50), player.adsWatchedCount, 50, 500.00)
+            makeTask("daily_login", loc.dailyLoginTask, 1, 1, player.taskLoginRewardBdt),
+            makeTask("daily_ad_1", loc.watchAdsTask(1), player.adsWatchedCount, 1, player.taskAd1RewardBdt),
+            makeTask("daily_lvl_1", loc.completeLevelsTask(1), player.dailyLevelsCompleted, 1, player.taskLvl1RewardBdt),
+            makeTask("daily_lvl_3", loc.completeLevelsTask(3), player.dailyLevelsCompleted, 3, player.taskLvl3RewardBdt),
+            makeTask("daily_lvl_5", loc.completeLevelsTask(5), player.dailyLevelsCompleted, 5, player.taskLvl5RewardBdt),
+            makeTask("daily_lvl_20", loc.completeLevelsTask(20), player.dailyLevelsCompleted, 20, player.taskLvl20RewardBdt),
+            makeTask("daily_ad_3", loc.watchAdsTask(3), player.adsWatchedCount, 3, player.taskAd3RewardBdt),
+            makeTask("daily_ad_15", loc.watchAdsTask(15), player.adsWatchedCount, 15, player.taskAd15RewardBdt),
+            makeTask("daily_ad_30", loc.watchAdsTask(30), player.adsWatchedCount, 30, player.taskAd30RewardBdt),
+            makeTask("daily_ad_50", loc.watchAdsTask(50), player.adsWatchedCount, 50, player.taskAd50RewardBdt)
         )
     }
 

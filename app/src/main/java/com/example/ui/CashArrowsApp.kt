@@ -63,6 +63,7 @@ import com.example.ui.components.PinkCashStackIcon
 import com.example.ui.components.RewardClaimOverlay
 import com.example.ui.components.SettingsAndLanguageDialog
 import com.example.ui.components.TaskCenterModal
+import com.example.ui.components.UserAuthModal
 import com.example.ui.components.WithdrawScreen
 
 @Composable
@@ -93,18 +94,46 @@ fun CashArrowsApp(viewModel: GameViewModel) {
                         WithdrawScreen(
                             balance = state.displayBalance,
                             selectedTierBdt = state.selectedWithdrawTierBdt,
+                            tiersBdt = listOf(
+                                state.player.withdrawTier1Bdt,
+                                state.player.withdrawTier2Bdt,
+                                state.player.withdrawTier3Bdt,
+                                state.player.withdrawTier4Bdt
+                            ),
+                            minWithdrawBdt = state.player.minWithdrawBdt,
                             countryRegion = state.countryRegion,
                             savedPaymentMethodId = state.player.savedPaymentMethod,
                             savedAccountNumber = state.player.savedAccountNumber,
                             savedAccountName = state.player.savedAccountName,
+                            isUserLoggedIn = state.player.isUserLoggedIn,
+                            userId = state.player.userId,
+                            userFullName = state.player.userFullName,
+                            userEmailOrPhone = state.player.userEmailOrPhone,
                             strings = strings,
                             currencySymbol = sym,
                             tickerText = currentTicker,
+                            showUserAuthModal = state.showUserAuthModal,
                             showAccountModal = state.showAccountInputModal,
                             showConfirmModal = state.showWithdrawConfirmModal,
+                            withdrawals = state.withdrawals,
                             onSelectTierBdt = { viewModel.selectWithdrawTierBdt(it) },
                             onSelectCountryRegion = { viewModel.selectCountryRegion(it) },
                             onClickWithdrawButton = { viewModel.openAccountInputModal() },
+                            onOpenUserAuthModal = { viewModel.openUserAuthModal(proceedToWithdraw = false) },
+                            onRegisterUser = { fullName, emailPhone, pass ->
+                                viewModel.registerUserAccount(fullName, emailPhone, pass)
+                            },
+                            onLoginUser = { emailPhone, pass ->
+                                viewModel.loginUserAccount(emailPhone, pass)
+                            },
+                            onUpdateUserProfile = { fullName, emailPhone, wallet, newPass ->
+                                viewModel.updateUserProfile(fullName, emailPhone, wallet, newPass)
+                            },
+                            onResetPassword = { emailPhone, newPass, confirmPass ->
+                                viewModel.resetForgottenPassword(emailPhone, newPass, confirmPass)
+                            },
+                            onLogoutUser = { viewModel.logoutUserAccount() },
+                            onRefreshWithdrawalStatuses = { viewModel.refreshFirebaseWithdrawalStatuses() },
                             onSaveAccountDetails = { method, acc, name ->
                                 viewModel.saveAccountDetails(method, acc, name)
                             },
@@ -240,6 +269,9 @@ fun CashArrowsApp(viewModel: GameViewModel) {
                         currentLanguage = state.language,
                         soundEnabled = state.player.soundEnabled,
                         vibrationEnabled = state.player.vibrationEnabled,
+                        isUserLoggedIn = state.player.isUserLoggedIn,
+                        userFullName = state.player.userFullName,
+                        userId = state.player.userId,
                         onToggleSound = { viewModel.toggleSound() },
                         onToggleVibration = { viewModel.toggleVibration() },
                         onSelectCountryRegion = { viewModel.selectCountryRegion(it) },
@@ -249,7 +281,34 @@ fun CashArrowsApp(viewModel: GameViewModel) {
                             viewModel.setShowLevelPicker(true)
                         },
                         onRestartLevel = { viewModel.onRetryCurrentLevel() },
+                        onOpenUserAuth = { viewModel.openUserAuthModal(proceedToWithdraw = false) },
+                        onLogoutUser = { viewModel.logoutUserAccount() },
                         onClose = { viewModel.setShowSettings(false) }
+                    )
+                }
+
+                // User Auth / Editable User Profile Modal if opened from Settings on Game screen
+                if (state.showUserAuthModal) {
+                    UserAuthModal(
+                        isUserLoggedIn = state.player.isUserLoggedIn,
+                        userId = state.player.userId,
+                        initialName = state.player.userFullName,
+                        initialEmailOrPhone = state.player.userEmailOrPhone,
+                        initialSavedWallet = state.player.savedAccountNumber,
+                        onRegister = { fullName, emailPhone, pass ->
+                            viewModel.registerUserAccount(fullName, emailPhone, pass)
+                        },
+                        onLogin = { emailPhone, pass ->
+                            viewModel.loginUserAccount(emailPhone, pass)
+                        },
+                        onUpdateProfile = { fullName, emailPhone, wallet, newPass ->
+                            viewModel.updateUserProfile(fullName, emailPhone, wallet, newPass)
+                        },
+                        onResetPassword = { emailPhone, newPass, confirmPass ->
+                            viewModel.resetForgottenPassword(emailPhone, newPass, confirmPass)
+                        },
+                        onLogout = { viewModel.logoutUserAccount() },
+                        onClose = { viewModel.closeWithdrawModals() }
                     )
                 }
 
@@ -476,27 +535,23 @@ private fun TopGameHudHeader(
                         .size(42.dp)
                         .shadow(4.dp, RoundedCornerShape(12.dp))
                         .clip(RoundedCornerShape(12.dp))
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(Color(0xFF93C5FD), Color(0xFF3B82F6))
-                            )
-                        )
-                        .border(1.5.dp, Color(0xFF1E3A8A), RoundedCornerShape(12.dp))
+                        .background(Color(0xFF3B82F6))
+                        .border(1.5.dp, Color(0xFF1D4ED8), RoundedCornerShape(12.dp))
                         .clickable { onOpenTaskCenter() }
                         .testTag("hud_task_center_button"),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.FormatListBulleted,
-                        contentDescription = strings.taskCenterTitle,
-                        tint = Color(0xFF0F172A),
+                        contentDescription = "Task Center",
+                        tint = Color.White,
                         modifier = Modifier.size(22.dp)
                     )
                     if (state.unclaimableCount > 0) {
                         Box(
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
-                                .padding(3.dp)
+                                .padding(4.dp)
                                 .size(10.dp)
                                 .clip(CircleShape)
                                 .background(Color(0xFFEF4444))
@@ -511,20 +566,16 @@ private fun TopGameHudHeader(
                         .size(42.dp)
                         .shadow(4.dp, RoundedCornerShape(12.dp))
                         .clip(RoundedCornerShape(12.dp))
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(Color(0xFF93C5FD), Color(0xFF3B82F6))
-                            )
-                        )
-                        .border(1.5.dp, Color(0xFF1E3A8A), RoundedCornerShape(12.dp))
+                        .background(Color(0xFF3B82F6))
+                        .border(1.5.dp, Color(0xFF1D4ED8), RoundedCornerShape(12.dp))
                         .clickable { onOpenSettings() }
                         .testTag("hud_settings_button"),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.Settings,
-                        contentDescription = strings.settingsTitle,
-                        tint = Color(0xFF0F172A),
+                        contentDescription = "Settings",
+                        tint = Color.White,
                         modifier = Modifier.size(22.dp)
                     )
                 }

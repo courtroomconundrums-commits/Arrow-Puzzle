@@ -59,7 +59,7 @@ import com.example.ui.FlyingCashBurst
 import com.example.ui.RewardOverlayState
 
 /**
- * Task Center Modal matching 00:21 - 00:35 in the video and Screenshot 1 (Pusat Tugas / টাস্ক সেন্টার).
+ * Task Center Modal matching 00:21 - 00:35 in the video and Screenshot 1 (Task Center).
  */
 @Composable
 fun TaskCenterModal(
@@ -109,7 +109,7 @@ fun TaskCenterModal(
                         .padding(top = 36.dp, start = 12.dp, end = 12.dp, bottom = 14.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    // Cyan sub-header ribbon ("দৈনিক টাস্ক" / "ক্যারিয়ার টাস্ক")
+                    // Cyan sub-header ribbon ("Daily Tasks" / "Career Tasks")
                     Box(
                         modifier = Modifier
                             .fillMaxWidth(0.92f)
@@ -156,7 +156,7 @@ fun TaskCenterModal(
                     }
                 }
 
-                // Floating 3D Yellow Header ("টাস্ক সেন্টার" / "Pusat Tugas")
+                // Floating 3D Yellow Header ("Task Center")
                 Box(
                     modifier = Modifier
                         .shadow(8.dp, RoundedCornerShape(20.dp))
@@ -204,7 +204,7 @@ fun TaskCenterModal(
                 }
             }
 
-            // Bottom Folder Tabs ("দৈনিক টাস্ক" & "ক্যারিয়ার টাস্ক") matching 00:22 in video
+            // Bottom Folder Tabs ("Daily Tasks" & "Career Tasks") matching 00:22 in video
             Row(
                 modifier = Modifier
                     .fillMaxWidth(0.88f)
@@ -391,7 +391,7 @@ private fun TaskClipboardCard(
 
             Spacer(modifier = Modifier.width(10.dp))
 
-            // Right: Action button ("দাবি করুন" green vs "অসম্পূর্ণ" yellow)
+            // Right: Action button ("Claim" green vs "Go" yellow)
             val isReadyToClaim = task.isCompleted && !task.isClaimed
             val buttonBrush = when {
                 task.isClaimed -> Brush.verticalGradient(listOf(Color(0xFF94A3B8), Color(0xFF64748B)))
@@ -450,7 +450,7 @@ private fun TaskClipboardCard(
 }
 
 /**
- * Reward Claim Overlay ("টাস্ক পুরস্কার" & "সফল" Level Complete) matching 00:37 - 00:47 & 01:40 - 01:43 in the video.
+ * Reward Claim Overlay ("Task Reward" & "Level Complete!") matching 00:37 - 00:47 & 01:40 - 01:43 in the video.
  */
 @Composable
 fun RewardClaimOverlay(
@@ -543,7 +543,7 @@ fun RewardClaimOverlay(
                 .fillMaxWidth()
                 .padding(horizontal = 28.dp)
         ) {
-            // Title ("টাস্ক পুরস্কার" or "সফল")
+            // Title ("Task Reward" or "Level Complete!")
             Text(
                 text = if (overlay.isLevelComplete) strings.levelSuccessTitle else strings.taskRewardTitle,
                 color = Color(0xFFFDE047),
@@ -569,7 +569,7 @@ fun RewardClaimOverlay(
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // Green 3D Button with TV icon ("দাবি করতে বিজ্ঞাপন দেখুন")
+            // Green 3D Button with TV icon ("Watch Ad to Claim Full Reward")
             Box(
                 modifier = Modifier
                     .fillMaxWidth(0.86f)
@@ -713,7 +713,7 @@ fun FlyingCashBurstOverlay(
 }
 
 /**
- * Out of Lives Modal ("চালিয়ে যাবেন? / লাইফ শেষ!") matching 01:52 - 01:55 in the video.
+ * Out of Lives Modal ("Continue? / Out of Lives!") matching 01:52 - 01:55 in the video.
  */
 @Composable
 fun OutOfLivesDialog(
@@ -777,7 +777,7 @@ fun OutOfLivesDialog(
 
                 Spacer(modifier = Modifier.height(26.dp))
 
-                // Green Free Revive button ("বিনামূল্যে পুনরুজ্জীবন")
+                // Green Free Revive button ("Free Revive")
                 Box(
                     modifier = Modifier
                         .fillMaxWidth(0.90f)
@@ -820,7 +820,7 @@ fun OutOfLivesDialog(
                 )
             }
 
-            // Floating Yellow Header ("চালিয়ে যাবেন?")
+            // Floating Yellow Header ("Continue?")
             Box(
                 modifier = Modifier
                     .shadow(8.dp, RoundedCornerShape(20.dp))
@@ -874,12 +874,17 @@ fun SettingsAndLanguageDialog(
     currentLanguage: AppLanguage,
     soundEnabled: Boolean,
     vibrationEnabled: Boolean,
+    isUserLoggedIn: Boolean = false,
+    userFullName: String = "",
+    userId: String = "",
     onToggleSound: () -> Unit,
     onToggleVibration: () -> Unit,
     onSelectCountryRegion: (CountryRegion) -> Unit,
     onSelectLanguage: (AppLanguage) -> Unit,
     onOpenLevelPicker: () -> Unit,
     onRestartLevel: () -> Unit,
+    onOpenUserAuth: () -> Unit = {},
+    onLogoutUser: () -> Unit = {},
     onClose: () -> Unit
 ) {
     Box(
@@ -978,83 +983,23 @@ fun SettingsAndLanguageDialog(
                 )
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-            // Country / Region & Mobile Banking Selector
-            Text(
-                text = "🌍 Country & Mobile Banking (Auto-Detected: ${currentRegion.flagEmoji} ${currentRegion.countryCode})",
-                color = Color(0xFFFDE047),
-                fontWeight = FontWeight.Black,
-                fontSize = 13.sp,
-                modifier = Modifier.align(Alignment.Start)
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 135.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(CountryRegion.entries) { reg ->
-                    val isRegSelected = reg == currentRegion
-                    val methodsText = reg.mobileBankingOptions.joinToString("/") { it.displayName }
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(if (isRegSelected) Color(0xFFFDE047) else Color.White)
-                            .border(
-                                width = if (isRegSelected) 2.5.dp else 1.dp,
-                                color = if (isRegSelected) Color(0xFF15803D) else Color(0xFFCBD5E1),
-                                shape = RoundedCornerShape(12.dp)
-                            )
-                            .clickable { onSelectCountryRegion(reg) }
-                            .padding(horizontal = 8.dp, vertical = 7.dp)
-                            .testTag("region_option_${reg.countryCode}"),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(text = reg.flagEmoji, fontSize = 17.sp)
-                        Spacer(modifier = Modifier.width(5.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "${reg.countryCode} (${reg.currencySymbol}) • 1Ad=${reg.currencySymbol}${"%.2f".format(reg.oneAdRewardLocal())}",
-                                color = Color(0xFF0F172A),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                maxLines = 1
-                            )
-                            Text(
-                                text = methodsText,
-                                color = Color(0xFF475569),
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1
-                            )
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // 8-Language Selector Grid
+            // 8-Language & Country Selector Grid (Automatically configures Country, Currency & Mobile Banking)
             Text(
                 text = "🌐 ${strings.languageLabel}",
                 color = Color(0xFFFDE047),
                 fontWeight = FontWeight.Black,
-                fontSize = 13.sp,
+                fontSize = 14.sp,
                 modifier = Modifier.align(Alignment.Start)
             )
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 135.dp),
+                    .heightIn(max = 220.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -1148,6 +1093,62 @@ fun SettingsAndLanguageDialog(
                     )
                 }
             }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // User Account Login / Profile Status Button
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(46.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color(0xFF0F172A))
+                        .border(
+                            width = 1.5.dp,
+                            color = if (isUserLoggedIn) Color(0xFF22C55E) else Color(0xFFFDE047),
+                            shape = RoundedCornerShape(14.dp)
+                        )
+                        .clickable { onOpenUserAuth() }
+                        .testTag("settings_user_account_button"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = if (isUserLoggedIn && userId.isNotBlank()) {
+                            "👤 Edit Profile: $userFullName ($userId)"
+                        } else {
+                            "👤 User Profile / Login / Forgot Password"
+                        },
+                        color = if (isUserLoggedIn) Color(0xFF86EFAC) else Color(0xFFFDE047),
+                        fontWeight = FontWeight.Black,
+                        fontSize = 12.sp
+                    )
+                }
+
+                if (isUserLoggedIn) {
+                    Box(
+                        modifier = Modifier
+                            .height(46.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color(0xFF991B1B))
+                            .border(1.5.dp, Color(0xFFFCA5A5), RoundedCornerShape(14.dp))
+                            .clickable { onLogoutUser() }
+                            .padding(horizontal = 12.dp)
+                            .testTag("settings_user_logout_button"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Logout",
+                            color = Color.White,
+                            fontWeight = FontWeight.Black,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -1191,17 +1192,13 @@ fun LevelPickerDialog(
             ) {
                 Column {
                     Text(
-                        text = if (isBengali) "লেভেল নির্বাচন করুন (1 - 300)" else "Select Puzzle Level (1 - 300)",
+                        text = "Select Puzzle Level (1 - 300)",
                         color = Color(0xFFFDE047),
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Black
                     )
                     Text(
-                        text = if (isBengali) {
-                            "আনলক করা হয়েছে: $maxUnlockedLevel / ${LevelGenerator.TOTAL_LEVELS}"
-                        } else {
-                            "Unlocked: $maxUnlockedLevel / ${LevelGenerator.TOTAL_LEVELS}"
-                        },
+                        text = "Unlocked: $maxUnlockedLevel / ${LevelGenerator.TOTAL_LEVELS}",
                         color = Color.White,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold
@@ -1290,7 +1287,7 @@ fun LevelPickerDialog(
                         )
                         Text(
                             text = when {
-                                !isUnlocked -> if (isBengali) "লক" else "LOCKED"
+                                !isUnlocked -> "LOCKED"
                                 isCompleted -> "✓ DONE"
                                 else -> "▶ PLAY"
                             },

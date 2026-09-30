@@ -35,14 +35,14 @@ data class BentArrow(
 }
 
 enum class LevelTheme(val titleBn: String, val titleEn: String) {
-    CLASSIC_MAZE("ক্লাসিক মেজ", "Classic Maze"),
-    HEART("হার্ট পাজল", "Heart Puzzle"),
-    TOWER("টাওয়ার পাজল", "Tower Puzzle"),
-    BIRD("পাখি পাজল", "Bird Puzzle"),
-    SPIRAL_LABYRINTH("স্পাইরাল ল্যাবিরিন্থ", "Spiral Labyrinth"),
-    CROWN("মুকুট পাজল", "Crown Puzzle"),
-    DIAMOND("ডায়মন্ড পাজল", "Diamond Puzzle"),
-    BUTTERFLY("প্রজাপতি পাজল", "Butterfly Puzzle")
+    CLASSIC_MAZE("Classic Maze", "Classic Maze"),
+    HEART("Heart Puzzle", "Heart Puzzle"),
+    TOWER("Tower Puzzle", "Tower Puzzle"),
+    BIRD("Bird Puzzle", "Bird Puzzle"),
+    SPIRAL_LABYRINTH("Spiral Labyrinth", "Spiral Labyrinth"),
+    CROWN("Crown Puzzle", "Crown Puzzle"),
+    DIAMOND("Diamond Puzzle", "Diamond Puzzle"),
+    BUTTERFLY("Butterfly Puzzle", "Butterfly Puzzle")
 }
 
 data class PuzzleLevel(
@@ -68,16 +68,3 @@ data class TaskItem(
 ) {
     val isCompleted: Boolean get() = currentProgress >= targetProgress
 }
-
-/**
- * Country-specific local mobile banking / digital wallet withdrawal option.
- */
-data class MobileBankingOption(
-    val id: String,
-    val displayName: String,
-    val subLabel: String,
-    val iconEmoji: String,
-    val startColorHex: Long,
-    val endColorHex: Long,
-    val textColorHex: Long = 0xFFFFFFFF
-)

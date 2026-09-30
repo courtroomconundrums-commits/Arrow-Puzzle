@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import android.view.ViewGroup
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -29,7 +30,9 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -41,6 +44,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -56,15 +60,141 @@ import com.google.android.gms.ads.LoadAdError
 import kotlinx.coroutines.delay
 
 /**
- * Google AdMob Banner Ad Bar (320x50) using official Google Test Ad Unit ID
- * ca-app-pub-3940256099942544/6300978111.
- * Displays the real Google AdMob Banner AdView without showing raw Ad Unit IDs on screen.
+ * Multi-Network Banner Ad Bar (supports Google AdMob, Unity Ads, and Facebook Audience Network)
+ * dynamically controlled by the Admin Panel ON/OFF switch and active Ad Network setting.
  */
 @Composable
 fun AdMobBannerBar(
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    val adsEnabled by AdMobManager.adsEnabled.collectAsState()
+    val bannerEnabled by AdMobManager.bannerAdsEnabled.collectAsState()
+    val activeNetwork by AdMobManager.activeAdNetwork.collectAsState()
+    val admobBannerId by AdMobManager.admobBannerUnitId.collectAsState()
+    val unityGameId by AdMobManager.unityGameId.collectAsState()
+    val unityBannerId by AdMobManager.unityBannerId.collectAsState()
+    val fbBannerId by AdMobManager.fbBannerId.collectAsState()
+    val isSdkReady by AdMobManager.isSdkInitialized.collectAsState()
+
+    // If Admin Panel turned OFF ads or banner ads, hide the banner bar completely
+    if (!adsEnabled || !bannerEnabled) {
+        return
+    }
+
+    // Unity Ads or Facebook Audience Network Banner Mode
+    if (activeNetwork == "UNITY" || activeNetwork == "FACEBOOK") {
+        val networkLabel = if (activeNetwork == "UNITY") {
+            "Unity Ads Banner ($unityGameId / $unityBannerId)"
+        } else {
+            "Facebook Audience Network ($fbBannerId)"
+        }
+        val badgeColor = if (activeNetwork == "UNITY") Color(0xFF38BDF8) else Color(0xFF3B82F6)
+        Box(
+            modifier = modifier
+                .fillMaxWidth()
+                .height(54.dp)
+                .background(Color(0xFF0F172A))
+                .border(1.dp, Color(0xFF334155))
+                .testTag("admob_banner_bar"),
+            contentAlignment = Alignment.Center
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(badgeColor)
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = if (activeNetwork == "UNITY") "UNITY AD" else "FB AD",
+                        color = Color.White,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = networkLabel,
+                    color = Color(0xFFE2E8F0),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1
+                )
+            }
+        }
+        return
+    }
+
     var isBannerLoaded by remember { mutableStateOf(false) }
+    var retryTick by remember { mutableIntStateOf(0) }
+    var useFallbackTestUnit by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        AdMobManager.initialize(context)
+    }
+
+    LaunchedEffect(isBannerLoaded, isSdkReady, retryTick) {
+        if (isSdkReady && !isBannerLoaded && retryTick < 5) {
+            delay(4000L)
+            if (!isBannerLoaded) {
+                retryTick += 1
+            }
+        }
+    }
+
+    val activeUnitId = if (useFallbackTestUnit) {
+        AdMobManager.GOOGLE_OFFICIAL_TEST_BANNER_ID
+    } else {
+        admobBannerId.ifBlank { AdMobManager.BANNER_AD_UNIT_ID }
+    }
+
+    val adView = remember(activeUnitId) {
+        AdView(context).apply {
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            setAdSize(AdSize.BANNER)
+            adUnitId = activeUnitId
+            adListener = object : AdListener() {
+                override fun onAdLoaded() {
+                    isBannerLoaded = true
+                }
+
+                override fun onAdFailedToLoad(error: LoadAdError) {
+                    isBannerLoaded = false
+                    if (!useFallbackTestUnit && activeUnitId != AdMobManager.GOOGLE_OFFICIAL_TEST_BANNER_ID) {
+                        useFallbackTestUnit = true
+                    }
+                }
+            }
+        }
+    }
+
+    DisposableEffect(adView) {
+        onDispose {
+            try {
+                adView.destroy()
+            } catch (_: Throwable) {
+            }
+        }
+    }
+
+    LaunchedEffect(adView, isSdkReady, retryTick) {
+        if (isSdkReady && !isBannerLoaded) {
+            try {
+                adView.loadAd(AdRequest.Builder().build())
+            } catch (_: Throwable) {
+            }
+        }
+    }
 
     Box(
         modifier = modifier
@@ -98,7 +228,7 @@ fun AdMobBannerBar(
                 }
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Google AdMob • Test Ad",
+                    text = "Loading Google AdMob Test Ad...",
                     color = Color(0xFFCBD5E1),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold
@@ -106,37 +236,18 @@ fun AdMobBannerBar(
             }
         }
 
-        // Official Google Mobile Ads SDK Banner AdView
         AndroidView(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(50.dp),
-            factory = { context ->
-                AdView(context).apply {
-                    setAdSize(AdSize.BANNER)
-                    adUnitId = AdMobManager.BANNER_AD_UNIT_ID
-                    adListener = object : AdListener() {
-                        override fun onAdLoaded() {
-                            isBannerLoaded = true
-                        }
-
-                        override fun onAdFailedToLoad(error: LoadAdError) {
-                            isBannerLoaded = false
-                        }
-                    }
-                    try {
-                        loadAd(AdRequest.Builder().build())
-                    } catch (_: Throwable) {
-                    }
-                }
-            }
+            factory = { adView }
         )
     }
 }
 
 /**
- * Offline / Emulator Fallback Test Video Ad Overlay (only shown if device has no internet
- * or Google Play Services is unavailable). Never displays raw Ad Unit IDs.
+ * Multi-Network Video Ad Overlay (supports AdMob Fallback, Unity Ads Rewarded Video,
+ * and Facebook Audience Network Rewarded Video according to Admin Panel settings).
  */
 @Composable
 fun AdMobRewardedVideoDialog(
@@ -144,6 +255,17 @@ fun AdMobRewardedVideoDialog(
     onRewardEarnedAndClose: () -> Unit,
     onCancelEarly: () -> Unit
 ) {
+    val activeNetwork by AdMobManager.activeAdNetwork.collectAsState()
+    val unityGameId by AdMobManager.unityGameId.collectAsState()
+    val unityRewardedId by AdMobManager.unityRewardedId.collectAsState()
+    val fbRewardedId by AdMobManager.fbRewardedId.collectAsState()
+
+    val networkBadgeTitle = when (activeNetwork) {
+        "UNITY" -> "Unity Ads • Rewarded Video ($unityGameId / $unityRewardedId)"
+        "FACEBOOK" -> "Facebook Audience Network • Video ($fbRewardedId)"
+        else -> "Google AdMob • Test Video Ad"
+    }
+
     var secondsLeft by remember { mutableIntStateOf(5) }
     val isRewardUnlocked = secondsLeft <= 0
 
@@ -173,7 +295,6 @@ fun AdMobRewardedVideoDialog(
             .padding(20.dp)
             .testTag("admob_rewarded_video_dialog")
     ) {
-        // Top Bar: "Test Ad" + Countdown + Close Button
         Row(
             modifier = Modifier
                 .align(Alignment.TopCenter)
@@ -197,7 +318,11 @@ fun AdMobRewardedVideoDialog(
                         .padding(horizontal = 6.dp, vertical = 2.dp)
                 ) {
                     Text(
-                        text = "Test Ad",
+                        text = when (activeNetwork) {
+                            "UNITY" -> "Unity Ad"
+                            "FACEBOOK" -> "FB Ad"
+                            else -> "Test Ad"
+                        },
                         color = Color.Black,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Black
@@ -216,7 +341,6 @@ fun AdMobRewardedVideoDialog(
                 )
             }
 
-            // Close / Claim button
             Box(
                 modifier = Modifier
                     .size(40.dp)
@@ -242,7 +366,6 @@ fun AdMobRewardedVideoDialog(
             }
         }
 
-        // Center Test Video Content
         Column(
             modifier = Modifier
                 .align(Alignment.Center)
@@ -264,7 +387,7 @@ fun AdMobRewardedVideoDialog(
                     .padding(horizontal = 12.dp, vertical = 4.dp)
             ) {
                 Text(
-                    text = "Google AdMob • Test Video Ad",
+                    text = networkBadgeTitle,
                     color = Color(0xFFFDE047),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.ExtraBold
@@ -273,7 +396,6 @@ fun AdMobRewardedVideoDialog(
 
             Spacer(modifier = Modifier.height(22.dp))
 
-            // Animated Video Play Circle
             Box(
                 modifier = Modifier
                     .size((92 * pulse).dp)
@@ -307,7 +429,6 @@ fun AdMobRewardedVideoDialog(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Video Progress Bar
             val progress = ((5 - secondsLeft) / 5f).coerceIn(0f, 1f)
             Box(
                 modifier = Modifier
@@ -356,7 +477,7 @@ fun AdMobRewardedVideoDialog(
                 }
             } else {
                 Text(
-                    text = "Playing Test Video Ad... (${secondsLeft}s remaining)",
+                    text = "Playing Video Ad... (${secondsLeft}s remaining)",
                     color = Color(0xFFCBD5E1),
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold
